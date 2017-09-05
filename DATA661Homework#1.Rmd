@@ -1,0 +1,109 @@
+---
+title: 'DATA661 - Homework #1'
+author: "Blandon Casenave"
+date: "9/3/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(data.table)
+#do not load plyr after dplyr
+library(dplyr)
+library(caret)
+library(pROC)
+library(MASS)
+library(segmented)
+library(stats)
+library(zoo)
+library(graphics)
+```
+
+DATA Sources:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+#please connect to wifi
+electricaldata <- "https://raw.githubusercontent.com/Misterresearch/DATA661/master/monthly_data.csv"
+
+outsidetemp <-"https://raw.githubusercontent.com/Misterresearch/DATA661/master/oat.csv"
+  
+electricaldata <- read.table(file = electricaldata, header = TRUE, sep = ",", na.strings = c("","NA"))
+
+outsidetemp <- read.table(file = outsidetemp, header = FALSE, sep = "", na.strings = c("","NA"))
+```
+
+
+DATA TRANSFORMATION 
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+names(outsidetemp)[names(outsidetemp)=="V1"] <- "Month"
+names(outsidetemp)[names(outsidetemp)=="V2"] <- "Day"
+names(outsidetemp)[names(outsidetemp)=="V3"] <- "Year"
+names(outsidetemp)[names(outsidetemp)=="V4"] <- "Temp"
+
+outsidetwoyears <-data.frame(
+  outsidetemp %>%
+    group_by_(.dots = c("Month","Year")) %>%
+    summarize(AvgTemp=mean(Temp)))
+
+outsidetwoyears <-outsidetwoyears[order(outsidetwoyears$Year),]
+
+outsidetwoyears$Date = paste(outsidetwoyears$Month, outsidetwoyears$Year, sep="/")
+
+outsidetwoyears$MY <- as.yearmon(as.character(outsidetwoyears$Date), "%m/%Y")
+
+outsidesub <- subset(outsidetwoyears, MY >= as.yearmon("2014-07") & MY < as.yearmon("2016-07"), 
+select=c(MY, AvgTemp))
+
+names(outsidesub)[names(outsidesub)=="MY"] <- "Date"
+
+
+electricaldata$Date <- as.yearmon(as.character(electricaldata$End_Date), "%d-%b-%y")
+electrical<-data.frame(electricaldata$Date, electricaldata$Elec)
+names(electrical)[names(electrical)=="electricaldata.Date"] <- "Date"
+names(electrical)[names(electrical)=="electricaldata.Elec"] <- "Kwh"
+
+totalDF <- merge(electrical,outsidesub,by="Date")
+```
+
+Linear Regression & Summary Stats
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+energymodel <- lm(Kwh ~ AvgTemp, data=totalDF)
+summary(energymodel)
+
+plot(totalDF$Kwh ~ totalDF$AvgTemp) 
+abline(2053.186, 17.192) 
+
+#plot(energymodel)
+```
+
+Piecewise Linear Regression Model
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+segmented.energymodel <- segmented(energymodel, seg.Z = ~AvgTemp, psi=70)
+summary(segmented.energymodel)
+plot(segmented.energymodel)
+```
+
+**Assignment Questions**
+
+a-i) The first model is a standard linear regression model, with one regression line through the scatterplot of data points. We can tell that there is a reasonably strong relationship betweem outside temp and electrical usage, but that the variance appears to be unequal (heteroskedastic) across our data set. The second model, with our segmented regression instead has two regression lines connected at our breakpoint (62.7F).
+
+a-ii) The adjusted R-squared values for model one is .64, and for the second model it's .88, a marked improvement when moving to the piecewise model. 
+
+b-i &ii) In short, our piecewise model tells us that prior to the outside temperature hitting 63 degrees (+/- 2 degrees), there is no statistical relationship beteen outside temperature and Kwh used. However, after the outside temp hits our breakpoint, the relationship becomes statistically significant because we have a t-value (6.01) above the critical value for a 95% CI. The slope coffecient tells us that for every one degree/unit increase after our breakpoint (63 degrees), there's an increase of 51 Kwh in electrical consumption. 
+
+
+Source: [Piecewise Linear Regression Model](https://onlinecourses.science.psu.edu/stat501/node/310)
+
+Source:[segmented package CRAN](https://cran.r-project.org/web/packages/segmented/segmented.pdf)
+
+Source:[R-Bloggers Piecewise Regression](https://www.r-bloggers.com/r-for-ecologists-putting-together-a-piecewise-regression/)
+
+
