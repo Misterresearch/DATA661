@@ -1,0 +1,109 @@
+---
+title: "DATA661: Working With Data - Diamonds"
+author: "Blandon Casenave"
+date: "10/24/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*7.3.4 -Q1*
+Explore the distribution of each of the x, y, and z variables in diamonds. What do you learn? Think about a diamond and how you might decide which dimension is the length, width, and depth.
+
+Interestingly enough, the appeariance of the distributions change depending on the breaks in the histogram. With 50 breaks, each of the distributions appear close to a guassian normal distribution, with some minor skew. All of the distributions are continuous, non-integers. The QQNorm plots for x confirm something close to normal distribution, while y and z appear not to be...but that might be due to the presence of outliers in the data set. 
+
+The information about x.y and z would have to be supplied to me directly because I can't tell from the data along which is which. 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(dummies)
+library(dplyr)
+
+summary(diamonds)
+hist(diamonds$x, breaks = 50, main = "x 50 Breaks")
+qqnorm(diamonds$x)
+hist(diamonds$y, breaks = 50, main = "y 50 Breaks")
+qqnorm(diamonds$y)
+hist(diamonds$z, breaks = 50, main = "z 50 Breaks")
+qqnorm(diamonds$z)
+```
+
+
+*7.3.4 -Q2*
+
+Explore the distribution of price. Do you discover anything unusual or surprising? (Hint: Carefully think about the binwidth and make sure you try a wide range of values.)
+
+Without customizing the bin widths the demand for diamonds seems to be perfectly elastic in our "Price Auto Breaks" chart. However, once we create 50 breaks, and see the data more granularly, we can see more of a Poisson type distribution (although the data is continous. Essentially, the lowest priced diamonds have a smaller demand than those at $5K...indicating at certain price points demand is inelastic  (people don't want low-quality diamonds no matter what the price). 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+hist(diamonds$price, main = "Price Auto Breaks")
+hist(diamonds$price, breaks = 50, main = "Price 50 Breaks")
+```
+
+*7.4.1 - Q1*
+
+What happens to missing values in a histogram? What happens to missing values in a bar chart? Why is there a difference?
+
+Missing values can be omitted in a histogram, in a bar chart they will be added up and represent the total number of "NA" string values, just like any other categorical value. The reason is because histograms represent continous variables that we know must be numeric, so we can automatically omit any varchar or text string value. However, as mentioned earlier, bar charts are created for categorical values...meaning they are designed to aggregate each instance of any string value, including "NA" unless specifically removed. 
+
+*7.5.1.1 -Q2*
+
+What variable in the diamonds dataset is most important for predicting the price of a diamond? How is that variable correlated with cut? Why does the combination of those two relationships lead to lower quality diamonds being more expensive?
+
+Based on the linear regression below, carat has the most influence on price - the steepest slope...for every .01 increase in carat, there is a $11,257 increase in price. 
+However, the correlation between carat and cut is inverse...in other words there's a .09 correlation between a fair cut and carat size, but a -.16 between ideal and carat size. This means as the carat size increases, the price increases but the cut quality degrades...quantity vs. quality. 
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+mydiamonds<-diamonds
+mydiamonds <-setDT(mydiamonds)
+mydummydiamonds <-dummy.data.frame(mydiamonds)
+
+mydiamonds$cut <- factor(mydiamonds$cut, ordered = FALSE)
+mydiamonds$color <- factor(mydiamonds$color, ordered = FALSE)
+mydiamonds$clarity <- factor(mydiamonds$clarity, ordered = FALSE)
+
+mydummydiamonds <-dummy.data.frame(mydiamonds, sep =".")
+
+lmdiamonds <- lm(price ~ ., data=mydummydiamonds)
+summary(lmdiamonds)
+
+cor(mydummydiamonds)
+```
+
+
+*7.5.3.1 -Q3*
+How does the price distribution of very large diamonds compare to small diamonds. Is it as you expect, or does it surprise you?
+
+Returning to our summary stats for carats, we can use the IQR end points (25% and 75% quartiles) to define "very large" and "small". Anything below the 1st quartile or .4 would be "small", and anything above the 3rd quartile or 1.04 would be "large"for this data set. 
+
+Based on our histogram, and the QQ norm plot it seems that there are more extreme values in the large diamond data set than expected...indicating that the distribution isn't normal - which makes sense given the shape our histogram, which appears to show a Poisson distribution. The phenomenon that I think is responsible for the shape is the curve is low demand for the "cheaper" large diamonds.
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+smalldiamonds <-dplyr::filter(diamonds, carat <= .4)
+largediamonds <-dplyr::filter(diamonds, carat >= 1.04)
+
+hist(smalldiamonds$price, breaks = 50, main = "Small Diamonds Price 50 Breaks")
+qqnorm(smalldiamonds$price)
+summary(smalldiamonds$price)
+cor(smalldiamonds$price, smalldiamonds$carat)
+
+hist(largediamonds$price, breaks = 50, main = "Large Diamonds Price 50 Breaks")
+qqnorm(largediamonds$price)
+summary(largediamonds$price)
+cor(largediamonds$price, largediamonds$carat)
+```
+
+
+*10.5.1 - Q1*
+How can you tell if an object is a tibble? (Hint: try printing mtcars, which is a regular data frame).
+
+When printing, tibbles show the first 10 rows by default and they list the variable type beneath the column heading (data, chr, int, dbl). 
+
+*10.5.1 - Q3*
+
+If you have the name of a variable stored in an object, e.g. var <- "mpg", how can you extract the reference variable from a tibble?
+
+In this example it would be var$mpg. Reference the new tibble object, subsett on the original name. 
