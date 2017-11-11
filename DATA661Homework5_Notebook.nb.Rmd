@@ -1,0 +1,122 @@
+---
+title: "R Notebook DATA661Homework5"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+*Libraries*
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+library(ggplot2)
+library(data.table)
+library(dplyr)
+library(ggrepel)
+```
+
+
+
+*Data Files & Table*
+
+```{r,warning=FALSE, echo=TRUE, message=FALSE }
+dat <- read.csv("https://raw.githubusercontent.com/Misterresearch/DATA661/master/EconomistData.csv")
+head(dat)
+```
+
+*Exercise 1.1 -1.2*
+
+Initial creation of plot, and changing points from the default black to blue.
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI)) + geom_point(color="blue")
+```
+
+
+*Exercise 1.3*
+
+Setting colors based on region.
+
+```{r}
+
+ggplot(dat, aes(x = CPI, y = HDI, color = Region)) + geom_point()
+```
+
+
+*Exercise 1.4*
+
+enlarging all points to size 2
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+
+ggplot(dat, aes(x = CPI, y = HDI, size = 2, color = Region)) + geom_point()
+```
+
+
+*Exercise 1.5*
+
+Scaling size of points based on Rank
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI, size = HDI.Rank, color = Region)) + geom_point()
+```
+
+
+*Exercise 2.1-2.2*
+
+Starting from initial plot again, then adding smoothing line 
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI, size = HDI.Rank)) + geom_point(color="blue")+ geom_smooth()
+```
+
+*Exercise 2.3*
+
+Add regression line through plot using "stat_method"
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+
+ggplot(dat, aes(x = CPI, y = HDI, size = HDI.Rank)) + geom_point(color="blue")+ 
+stat_smooth(method = lm)
+```
+
+
+*Exercise 2.4*
+
+Now using geom_line, based on simple regression explicitly set in the code. 
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+predictHDI<- predict(lm(HDI ~ CPI, data = dat))
+
+ggplot(dat, aes(x = CPI, y = HDI, size = HDI.Rank)) + geom_point(color="blue")+ 
+geom_line(aes(y = predictHDI))
+```
+
+DID NOT ANSWER BONUS QUESTION
+
+*Exercise 3.1*
+
+Recreatio of initial plot with color set to region.
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI, color = Region)) + geom_point()
+```
+
+*Exercise 3.2*
+
+Manual override of x label from variable name to custom text :Human Development Index"
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI, color = Region)) + geom_point() + scale_y_discrete(name="Human Development Index")
+```
+
+
+*Exercise 3.3*
+
+Manual override of color=Region with a vector of custom variables. In order to work, the number of items in a vector must match the number of distinct values in a corresponding variable. 
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot(dat, aes(x = CPI, y = HDI, color=Region)) + geom_point() + scale_color_manual(values=c("black", "red", "green", "white", "orange", "purple"))
+```
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+
