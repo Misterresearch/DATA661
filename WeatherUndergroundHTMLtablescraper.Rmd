@@ -1,0 +1,39 @@
+---
+title: "Weather Undergound Table Webscrape"
+author: "Blandon Casenave"
+date: "November 12, 2017"
+output: html_document
+---
+
+
+**Websraping HTML Table Weather Underground**
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+library(stats)
+library(ggplot2)
+library(data.table)
+library(RCurl)
+library(XML)
+library(rvest)
+```
+
+```{r , warning=FALSE, echo=FALSE, message=FALSE}
+webpage <- read_html("https://www.wunderground.com/history/airport/KJFK/2016/2/23/CustomHistory.html?dayend=1&monthend=8&yearend=2016&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=")
+tbls <- html_nodes(webpage, "table")
+head(tbls)
+
+tbls_ls <- webpage %>%
+          html_nodes("table") %>%
+          .[2] %>%
+          html_table(fill = TRUE)
+tbls_ls<-as.data.frame(tbls_ls)
+weathertable<-tbls_ls[c(1,3)]
+weathertable
+```
+
+[Webscraping HTML Tables](http://bradleyboehmke.github.io/2015/12/scraping-html-tables.html)
+
+[Base URL NYC Weather Data](https://www.wunderground.com/history/airport/KJFK/2016/2/23/CustomHistory.html?)
+
