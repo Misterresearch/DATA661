@@ -1,0 +1,184 @@
+---
+title: "DATA661 - Midterm"
+author: "Blandon Casenave"
+date: "10/28/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Libraries*
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+library(stats)
+library(prophet)
+library(pROC)
+library(ggplot2)
+library(forecast)
+library(tseries)
+library(segmented)
+library(data.table)
+library(RCurl)
+library(XML)
+library(rvest)
+library(scales)
+library(MASS)
+```
+
+*Primary Data Source Loading*
+
+```{r, warning=FALSE, echo=TRUE, message=FALSE}
+
+nycbuildings <- "/Users/digitalmarketer1977/Documents/DATA ANALYTICS FALL 2017/644/nyc_benchmarking_disclosure_data_reported_in_2016.csv"
+
+#nycbuildings <- "https://raw.githubusercontent.com/Misterresearch/DATA661/master/nyc_b#enchmarking_disclosure_data_reported_in_2016.csv"
+
+nycbuildingstable <- read.csv(nycbuildings, header = TRUE, sep = ",")
+```
+
+*Exploratory Look Property Type & Borough*
+
+When analyzing mean electrical consumption (Electricity.Use...Grid.Purchase..kBtu.), multifamily residential properties are not among the highest users, considering that these structures are generally empty during the day Monday-Friday. However, given the sheer volume of residents in New York City (2016 was a record year), multifamily residential structures are the highest by far of the city's total consumption. Much of the material that we covered so far has focused on office building consumption, and automation to create better efficiencies. However, it seems based on sheer volume, targeting the conservation efforts at the household level will also yield some gains. It's also worth noting the Religious/Worship properties consumed the least when looking at averages and totals - largely because they're used about once week. There seems to be a direct link between usage and volume of usage/visitation and duration. 
+
+Another cut of the data we employed was to look at the average consumption for multi-family residential structures by borough. However, our inability identify trended sources for demographic information (Income, HH size & Education), renders further analysis moot at this point - however we've provided a visualization below.  
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+typeavgkbtu <- nycbuildingstable %>%
+ na.omit() %>%
+ group_by(Primary.Property.Type...Self.Selected) %>%
+ summarise(avg = mean(Electricity.Use...Grid.Purchase..kBtu.)) %>%
+ arrange(desc(avg))
+
+typesumkbtu <- nycbuildingstable %>%
+ na.omit() %>%
+ group_by(Primary.Property.Type...Self.Selected) %>%
+ summarise(total = sum(Electricity.Use...Grid.Purchase..kBtu.)) %>%
+ arrange(desc(total))
+
+fambyborough<- nycbuildingstable %>%
+ na.omit() %>%
+ group_by(Primary.Property.Type...Self.Selected="Multifamily Housing") %>%
+ group_by(Borough) %>%
+ summarise(avg = mean(Electricity.Use...Grid.Purchase..kBtu.)) %>%
+ arrange(desc(avg))
+
+ggplot(data = typeavgkbtu,aes(x = reorder(Primary.Property.Type...Self.Selected,desc(avg)), y = avg)) + geom_histogram(fill="blue", stat = "identity") + scale_x_discrete(labels = c("Hosp", "Off", "R Ware", "Hotel", "Senior", "Ret", "Mixed", "Dorm", "K-12", "Med", "Distr", "MultiFam", "NR Ware", "Rel"), name = "Property Type")+ scale_y_continuous(name = "Avg kBTU") + ggtitle("Avg kBTU by Property Type (000)") + theme(plot.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=14, hjust=0)) + geom_text(aes(label = comma(round(avg)), sep=","), position = position_dodge(0.9), size=2, color="black", vjust=-0.25)
+
+ggplot(data = typesumkbtu, aes(x=reorder(Primary.Property.Type...Self.Selected, desc(total)), y = total)) + geom_histogram(fill="green", stat = "identity") + scale_x_discrete(labels = c("MultiFam", "Off", "Hotel", "Senior", "Dorm", "Hosp", "K-12", "Med", "NR Ware", "R Ware", "Ret", "Distr", "Mixed", "Rel"), name ="Property Type") + scale_y_continuous(name = "Total kBTU") + ggtitle("Total kBTU by Property Type (000)") + theme(plot.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=14, hjust=0)) + geom_text(aes(label = comma(round(total/100000))), position = position_dodge(0.9), size=2, vjust=-0.25)
+
+ggplot(data = fambyborough, aes(x=reorder(Borough, desc(avg)), y = avg)) + geom_histogram(fill="grey", stat = "identity", color="blue") + scale_x_discrete(name ="Property Type") + scale_y_continuous(name = "Total kBTU") + ggtitle("MultiFamily Avg kBTU by Borough") + theme(plot.title = element_text(family = "Trebuchet MS", color="#666666", face="bold", size=14, hjust=0)) + geom_text(aes(label = comma(round(avg)), sep=","), position = position_dodge(0.9), size=3, vjust=-0.25)
+```
+
+
+**Subsetting & Munging**
+
+For the purposes of our analysis, we'll subset our original data frame to include three columns (Primary.Property.Type...Self.Selected, Electricity.Use...Grid.Purchase..kBtu.,Release.Date). 
+
+Then using dpylr, we're filtering on multifamily, across the entire city to look at, and eventually trend electrical consumption by release date. We've transformed Release.Date to be unique at the day level, further consolidating the data (it was impractically to use minute level data.  
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+subnycbuildings <- nycbuildingstable[c(54,15,45)]
+subnycbuildings <- subnycbuildings[which(subnycbuildings$Primary.Property.Type...Self.Selected=='Multifamily Housing'),]
+subnycbuildings$Release.Date <- dates <- as.Date(subnycbuildings$Release.Date, "%m/%d/%y")
+
+famallcity<- subnycbuildings %>%
+ na.omit() %>%
+ group_by(Primary.Property.Type...Self.Selected="Multifamily Housing") %>%
+ group_by(Release.Date) %>%
+ summarise(avg = mean(Electricity.Use...Grid.Purchase..kBtu.)) %>%
+ arrange(Release.Date)
+colnames(famallcity) <- c("Date", "Avg_kBTU")
+```
+
+
+**External Weather Data File Joined with "famallcity"**
+
+Daily temperatures for NYC were gathered Weather Underground, here is the base URL for NYC (at JFK Airport): https://www.wunderground.com/history/airport/KJFK/2016/2/23/CustomHistory.html?. 
+
+I created a separate webscraping file to read in the historical data for the selected date range of 2/23/16-8/1/16. I chose not to include the webscraping file within this script because it could become unstable over time and cause this file not to execute. 
+
+The file leverages the "rvest" package, and can be actually be seen here: https://github.com/Misterresearch/DATA661/blob/master/WeatherUndergroundHTMLtablescraper.Rmd 
+
+The final output, also hosted on Git is pulled into the script below, modified and joined using dplyr with our "famallcity" date frame. 
+
+```{r}
+
+myweather <- "https://raw.githubusercontent.com/Misterresearch/DATA661/master/myweather.csv"
+
+myweatherdf <- read.csv(myweather, header = TRUE, sep = ",")
+myweatherdf$Date <- as.Date(myweatherdf$Date, "%m/%d/%y")
+head(myweatherdf) 
+
+combineddf <- inner_join(famallcity,myweatherdf)
+head(combineddf)
+```
+
+** Modeling & Analysis**
+
+Below are several different model types that were used to find a good fit, starting with OLS, Change Point, Exponential and Negative Binomial. None of these models generated a statistically significant coefficient (p.value < .05). 
+
+We can see form the QQ Norm plot of both variables that neither is normal distributed, another indication that OLS would be a poor fit - even if statistically significant. 
+
+Due to these findings, it was pointless to fit a predictive model. Fundamentally, we were only given data that spanned 5 full months, that included seasonality. In other words we expect that over the course of the a full year for there to be periods where there is no relationship between electrical consumption and daily temps, but if we only have five months of data, then our analysis is compromised even further in detecting seasonal trends. The recommendation at this point would be to gather a full 12 months of data, this would allow for more observations and increase the chance of demonstrating a statistically significant relationship between electrical consumption and temperatures for multi-family residential units, as well as the ability to build a good predictive model.  
+
+*OLS*
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+summary(combineddf)
+qqnorm(combineddf$Avg_kBTU)
+qqnorm(combineddf$AvgTemp)
+ggplot(combineddf, aes(x = AvgTemp, y = Avg_kBTU)) + geom_point(color="blue")
+
+energymodellm<-lm(Avg_kBTU ~ AvgTemp, data = combineddf)
+summary(energymodellm)
+```
+*Change Point*
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+segmented.energymodellm <- segmented(energymodellm, seg.Z = ~AvgTemp, psi=60)
+summary(segmented.energymodellm)
+```
+
+**Exponential Distribution**
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+exponentialenergy<-lm(log(Avg_kBTU) ~ AvgTemp, data = combineddf)
+summary(exponentialenergy)
+
+segmented.exponentialenergy <- segmented(exponentialenergy, seg.Z = ~AvgTemp, psi=60)
+summary(segmented.exponentialenergy)
+```
+**Negative Binomial**
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+ml<-glm.nb(Avg_kBTU ~ AvgTemp, data = combineddf)
+summary(ml)
+
+segmented.ml <- segmented(ml, seg.Z = ~AvgTemp, psi=70)
+summary(segmented.ml)
+```
+
+**Insights & Visualization**
+
+As a visual confirmation of the OLS model we ran earlier (and other as well), there's to much variance for us to actually build a predictive model with the data we have so far - at least for the segment that we chose. 
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+predictenergy<- predict(lm(Avg_kBTU ~ AvgTemp, data = combineddf))
+
+ggplot(combineddf, aes(x = AvgTemp, y = Avg_kBTU,  color = Date)) + geom_point() + scale_y_discrete(name="Avg kBTU") + 
+geom_line(aes(y = predictenergy))
+
+```
+
+
+[Data Wrangling Cheatsheet](https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf)
+
+[Omit NA](https://stackoverflow.com/questions/26665319/removing-na-in-dplyr-pipe)
+
+[Plot Title & Format](https://www.r-bloggers.com/how-to-format-your-chart-and-axis-titles-in-ggplot2/)
+
+[ggplot2 Show Count Label](https://stackoverflow.com/questions/30057765/histogram-ggplot-show-count-label-for-each-bin-for-each-category)
+
+[Factorization of Dates](https://www.statmethods.net/input/dates.html)
